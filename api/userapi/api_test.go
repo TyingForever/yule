@@ -12,6 +12,7 @@ import (
 	"w.gdy.io/dyf/uas/ucs/sso"
 	"yule/db"
 	"yule/db/usrdb"
+	"yule/db/landlordsdb"
 )
 
 var ts *httptest.Server
@@ -107,4 +108,5 @@ func Remove() {
 	db.C(usrdb.CN_SEQUENCE).RemoveAll(nil)
 	db.C(usrdb.CN_SESSION).RemoveAll(nil)
 	db.C(usrdb.CN_USER).Insert(usrdb.Usr{Id: "u100", Account: "100", Pwd: usrdb.Sha("123"), Role: 1, Time: util.Now()})
+	db.C(landlordsdb.CN_LANDLORD_INFO).RemoveAll(nil)
 }

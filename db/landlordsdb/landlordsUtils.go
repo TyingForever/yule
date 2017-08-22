@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"github.com/Centny/gwf/log"
 	"github.com/Centny/gwf/util"
-	"gopkg.in/mgo.v2/bson"
 	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"yule/db"
 )
 
 const (
@@ -183,11 +181,20 @@ func ConfirmFirstPlayer() int {
 抢地主规则
 */
 func GrabLandlordRule(uid string, landLordInfo, info *LandlordInfo) *LandlordInfo {
+	players:=[]util.Map{}
+	for i := 0; i < len(info.Players); i++ {
+		players = append(players,util.Map{"uid":info.Players[i].StrVal("uid")})
+		if  uid == info.Players[i].StrVal("uid"){
+			players[i][LD_GRAB_SCORE] = landLordInfo.Multiple.IntVal(LD_GRAB_SCORE)
+		}
+	}
+	//任意一个玩家抢地主分数为最高分或者最后一个抢地主且分数高于之前的则确定抢地主玩家
 	if landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) == 3 ||
 		(landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) > info.Multiple.IntVal(LD_GRAB_SCORE) && info.OperateNum == PLAYER_NUM-1) {
 		for i := 0; i < len(info.Players); i++ {
 			if info.Players[i].StrVal("uid") == uid {
-				landLordInfo.Players[i]["cards"] = AddLordsCardsForLand(info.Players[i].StrVal("cards"),info.LandlordCards)
+				players[i]["cards"] = AddLordsCardsForLand(info.Players[i].StrVal("cards"),info.LandlordCards)
+				//landLordInfo.Players[i]["cards"] = AddLordsCardsForLand(info.Players[i].StrVal("cards"),info.LandlordCards)
 			}
 		}
 		landLordInfo.LandlordUser = uid
@@ -195,19 +202,42 @@ func GrabLandlordRule(uid string, landLordInfo, info *LandlordInfo) *LandlordInf
 		landLordInfo.Status = LS_DOUBLING
 		landLordInfo.DoubleTime = util.Now()
 		landLordInfo.OperateNum = 0
-
-	} else if landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) < 3 &&
-		landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) > info.Multiple.IntVal(LD_GRAB_SCORE) && info.OperateNum < PLAYER_NUM-1 {
-		for i := 0; i < len(info.Players); i++ {
-			if info.Players[i].StrVal("uid") == uid {
-				landLordInfo.TurnUser = info.Players[(i+1)%3].StrVal("uid")
+	} else if landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) < 3 && info.OperateNum < PLAYER_NUM-1 {
+		//非最后一个玩家抢地主且抢地主分数小于3且比之前的分数要高
+		if landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) > info.Multiple.IntVal(LD_GRAB_SCORE)  {
+			for i := 0; i < len(info.Players); i++ {
+				if info.Players[i].StrVal("uid") == uid {
+					landLordInfo.TurnUser = info.Players[(i+1)%3].StrVal("uid")
+				}
 			}
+		}else {
+			landLordInfo.Multiple[LD_GRAB_SCORE] = 0
 		}
+
 		landLordInfo.OperateNum = info.OperateNum + 1
 		landLordInfo.GrabTime = util.Now() //重新计算时间
 	}
-	//问题，当用户进行抢地主操作，则在最后一秒默认不抢
 
+	//最后一个不抢
+	if landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) == 0&& info.OperateNum == PLAYER_NUM-1 {
+		if info.Multiple.IntVal(LD_GRAB_SCORE) == 0 {//重新发牌
+			log.D("都不抢地主,重新发牌")
+			return nil
+		}
+		//从之前的玩家选择最高分的
+		for i := 0; i < 2; i++ {
+			if info.Players[i].IntVal(LD_GRAB_SCORE) == info.Multiple.IntVal(LD_GRAB_SCORE) {
+				players[i]["cards"] = AddLordsCardsForLand(info.Players[i].StrVal("cards"),info.LandlordCards)
+				landLordInfo.LandlordUser = players[i].StrVal("uid")
+				landLordInfo.TurnUser = players[i].StrVal("uid")
+			}
+		}
+		landLordInfo.Status = LS_DOUBLING
+		landLordInfo.DoubleTime = util.Now()
+		landLordInfo.OperateNum = 0
+
+	}
+	landLordInfo.Players = players
 	return landLordInfo
 }
 
@@ -229,6 +259,9 @@ func DoubleLandlordRule(uid string, landLordInfo, info *LandlordInfo) *LandlordI
 		}
 		landLordInfo.OperateNum = info.OperateNum + 1
 		landLordInfo.DoubleTime = util.Now()
+	}
+	if landLordInfo.Multiple.StrVal(LD_DOUBLE_USERS)==uid {//加倍
+		landLordInfo.Multiple[LD_DOUBLE_USERS] = uid
 	}
 	return landLordInfo
 }
@@ -263,93 +296,93 @@ func FightLandlordRule(uid, popCards string, landLordInfo, info *LandlordInfo) *
 	if flag_over {
 		log.D("OverGame")
 		//结束
-		record := &LandlordRecord{
-			Id:               bson.NewObjectId().Hex(),
-			Users:            []string{info.Players[0].StrVal("uid"),info.Players[1].StrVal("uid"),info.Players[2].StrVal("uid")},
-			LandlordUser:     info.LandlordUser,
-			Category:         info.Category,
-			Time:             util.Now(),
-			BombMultiple:     landLordInfo.Multiple.IntVal(LD_BOMBS),
-			DoubleMultiple:   int64(len(info.Multiple.StrVal(LD_DOUBLE_USERS))),
-			LandlordMultiple: info.Multiple.IntVal(LD_GRAB_SCORE),
-		}
-		//统计战果
-		landLordInfo.OperateNum = 0
-		landLordInfo.Status = LS_SHOW_RESULT
-		landLordInfo.OverGameTime = util.Now()
-		//判断春天反春天
-		if uid == info.LandlordUser && IsMeetSpring(uid, info.Players) {
-			record.WinRole = LW_LANDLORD
-			record.SpringMultiple = 1
-			multiple[LD_MING] = 1
-		}
-		if uid != info.LandlordUser && IsMeetAntiSpring(info.LandlordUser, info.Players) {
-			record.WinRole = LW_FARMER
-			record.AntiSpringMultiple = 1
-			multiple[LD_ANTI_SPRING] = 1
-		}
-		record.SumMultiple = record.LandlordMultiple
-		sum := int(record.DoubleMultiple + record.BombMultiple + record.SpringMultiple + record.AntiSpringMultiple)
-		for i := 0; i < sum; i++ {
-			record.SumMultiple *= 2
-		}
-		if info.Multiple.IntVal(LD_MING) > 0 {
-			record.SumMultiple *= info.Multiple.IntVal(LD_MING)
-		}
-		err := db.C(CN_LANDLORD_RECORD).Insert(&record)
-		if err != nil {
-			log.E("insert landlord record err(%v)", err)
-			return nil
-		}
-		players_u:=info.Players
-		for i := 0; i < len(players_u); i++ {
-			players_u[i]["pop_times"] = 0
-			players_u[i]["cards"] = ""
-			players_u[i]["pop_cards"] = LC_PASS
-			players_u[i]["ming"] = ""
-			if players_u[i].IntVal("status") == LUS_COLLOCATION {
-				players_u[i]["status"] = LUS_ONLINE
-			}
-		}
-		//更新房间
-		err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id},bson.M{
-			"$set":bson.M{
-				"players":players_u,
-				"turn_user":"",
-				"operate_num" : 0,
-				"landlord_cards" : "",
-				"last_pop_cards" : LC_PASS,
-				"note_pop_cards" : LC_PASS,
-				"status" : LS_SHOW_RESULT,
-				"landlord_user" : "",
-				"multiple" :util.Map{},
-				"last" :util.Now(),
-				"queue_time" : 0,
-				"grab_time" : 0,
-				"double_time" : 0,
-				"pop_card_time" : 0,
-				"over_game_time" :util.Now(),
-				"ming_time" : 0,
-				"size" : 0,
-			}})
-		if err != nil {
-			log.E("update landlordInfo err(%v)", err)
-			return nil
-		}
-		//离线移除
-		for i := 0; i < len(info.Players); i++ {
-			if info.Players[i].IntVal("status") == LUS_OFFLINE {
-				u:=info.Players[i].StrVal("uid")
-				err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id,"players.uid":u,"players.status":LUS_OFFLINE},bson.M{
-					"$pull":bson.M{
-						"players.uid":u,
-					}})
-				if err != nil {
-					log.E("update landlordInfo err(%v)", err)
-					return nil
-				}
-			}
-		}
+		//record := &LandlordRecord{
+		//	Id:               bson.NewObjectId().Hex(),
+		//	Users:            []string{info.Players[0].StrVal("uid"),info.Players[1].StrVal("uid"),info.Players[2].StrVal("uid")},
+		//	LandlordUser:     info.LandlordUser,
+		//	Category:         info.Category,
+		//	Time:             util.Now(),
+		//	BombMultiple:     landLordInfo.Multiple.IntVal(LD_BOMBS),
+		//	DoubleMultiple:   int64(len(info.Multiple.StrVal(LD_DOUBLE_USERS))),
+		//	LandlordMultiple: info.Multiple.IntVal(LD_GRAB_SCORE),
+		//}
+		////统计战果
+		//landLordInfo.OperateNum = 0
+		//landLordInfo.Status = LS_SHOW_RESULT
+		//landLordInfo.OverGameTime = util.Now()
+		////判断春天反春天
+		//if uid == info.LandlordUser && IsMeetSpring(uid, info.Players) {
+		//	record.WinRole = LW_LANDLORD
+		//	record.SpringMultiple = 1
+		//	//multiple[LD_SPRING] = 1
+		//}
+		//if uid != info.LandlordUser && IsMeetAntiSpring(info.LandlordUser, info.Players) {
+		//	record.WinRole = LW_FARMER
+		//	record.AntiSpringMultiple = 1
+		//	//multiple[LD_ANTI_SPRING] = 1
+		//}
+		//record.SumMultiple = record.LandlordMultiple
+		//sum := int(record.DoubleMultiple + record.BombMultiple + record.SpringMultiple + record.AntiSpringMultiple)
+		//for i := 0; i < sum; i++ {
+		//	record.SumMultiple *= 2
+		//}
+		//if info.Multiple.IntVal(LD_MING) > 0 {
+		//	record.SumMultiple *= info.Multiple.IntVal(LD_MING)
+		//}
+		//err := db.C(CN_LANDLORD_RECORD).Insert(&record)
+		//if err != nil {
+		//	log.E("insert landlord record err(%v)", err)
+		//	return nil
+		//}
+		//players_u:=info.Players
+		//for i := 0; i < len(players_u); i++ {
+		//	players_u[i]["pop_times"] = 0
+		//	players_u[i]["cards"] = ""
+		//	players_u[i]["pop_cards"] = LC_PASS
+		//	players_u[i]["ming"] = ""
+		//	if players_u[i].IntVal("status") == LUS_COLLOCATION {
+		//		players_u[i]["status"] = LUS_ONLINE
+		//	}
+		//}
+		////更新房间
+		//err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id},bson.M{
+		//	"$set":bson.M{
+		//		"players":players_u,
+		//		"turn_user":"",
+		//		"operate_num" : 0,
+		//		"landlord_cards" : "",
+		//		"last_pop_cards" : LC_PASS,
+		//		"note_pop_cards" : LC_PASS,
+		//		"status" : LS_SHOW_RESULT,
+		//		"landlord_user" : "",
+		//		"multiple" :util.Map{},
+		//		"last" :util.Now(),
+		//		"queue_time" : 0,
+		//		"grab_time" : 0,
+		//		"double_time" : 0,
+		//		"pop_card_time" : 0,
+		//		"over_game_time" :util.Now(),
+		//		"ming_time" : 0,
+		//		"size" : 0,
+		//	}})
+		//if err != nil {
+		//	log.E("update landlordInfo err(%v)", err)
+		//	return nil
+		//}
+		////离线移除
+		//for i := 0; i < len(info.Players); i++ {
+		//	if info.Players[i].IntVal("status") == LUS_OFFLINE {
+		//		u:=info.Players[i].StrVal("uid")
+		//		err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id,"players.uid":u,"players.status":LUS_OFFLINE},bson.M{
+		//			"$pull":bson.M{
+		//				"players.uid":u,
+		//			}})
+		//		if err != nil {
+		//			log.E("update landlordInfo err(%v)", err)
+		//			return nil
+		//		}
+		//	}
+		//}
 
 		return nil
 	} else {

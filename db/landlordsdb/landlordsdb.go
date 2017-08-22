@@ -10,6 +10,26 @@ import (
 	"fmt"
 )
 
+/**
+判断是否进入游戏房间还是进入游戏大厅
+ */
+func IsEntryLandlord(uid string)  (int,*LandlordInfo,*LandlordSet,error) {
+	landlord,err:=FindRoomV(uid,"","",0,0,nil)
+	if err!=nil {
+		if strings.Contains(err.Error(),"not found") {
+			set,err:=FindLandlordsHall(nil)
+			if err !=nil{
+				log.E("FindLandlordsHall error(%v)",err)
+				return 0,nil,nil,err
+			}
+			return UGS_OFF,nil,set,nil
+		}
+		log.E("FindRoomV error(%v)",err)
+		return 0,nil,nil,err
+	}
+	return UGS_LANDLORDS,landlord,nil,nil
+}
+
 /**进入游戏
 获取斗地主游戏大厅信息
  */
@@ -166,6 +186,7 @@ func FindRoomV(uid,lid ,level string,categoryId,status int ,selector bson.M)  (l
 }
 
 
+
 /**
 玩家操作
 /**
@@ -181,7 +202,7 @@ func FindRoomV(uid,lid ,level string,categoryId,status int ,selector bson.M)  (l
 7.结束：当玩家第一个出完牌则结束游戏，玩家角色为赢家，开始清算低分，倍数统计输赢金币，并显示结果一定时间，用户在规定时间可以选择继续游戏或者回到大厅，时间已过默认回到大厅
 8.继续游戏：->1
  */
-func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,ming_type int64) (*LandlordInfo,error) {
+func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,ming_type int) (*LandlordInfo,error) {
 	if len(landLordInfo.Id)<1 {
 		return nil,util.Err("Landlord Id is null")
 	}
@@ -247,17 +268,27 @@ func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,
 	case OP_GRAB:
 		//进入抢地主 必须是在抢地主时间内，必须是轮到当前用户，状态为抢地主，每个用户最多只能轮流一次（即总共最多三次），抢地主分数必须比之前的分数要高
 		if util.Now() - info.GrabTime > LT_GRAB || uid != info.TurnUser || info.Status != LS_GRABBING||info.OperateNum>=PLAYER_NUM ||
-			landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) <= info.Multiple.IntVal(LD_GRAB_SCORE){
-			log.E("grab err")
+			(landLordInfo.Multiple.IntVal(LD_GRAB_SCORE)>0&&landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) <= info.Multiple.IntVal(LD_GRAB_SCORE)){
+			log.E("grab err",)
 			return nil,util.Err("grab err")
 		}
 		//抢地主规则
 		landLordInfo = GrabLandlordRule(uid,landLordInfo,info)
-		err = ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
+		//判断是否都不抢地主而重新开局
+		if landLordInfo!=nil {
+			err = ChangeLandlordInfo(uid,landLordInfo)
+			if err!=nil {
+				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
+				return nil,err
+			}
+		}else {//重新开局
+			err=RestartLandlord(info)
+			if err!=nil {
+				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)",err)
+				return nil,err
+			}
 		}
+
 		break
 	case OP_DOUBLE:
 		//加倍 必须是在加倍时间内，必须是轮到当前用户，状态为抢地主，每个用户最多只能轮流一次（即总共最多三次），抢地主分数必须比之前的分数要高
@@ -297,12 +328,23 @@ func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,
 			log.E("pop card err")
 			return nil,util.Err("pop card err")
 		}
-		landLordInfo = FightLandlordRule(uid,popCards,landLordInfo,info)
-		if landLordInfo!=nil {
-			landLordInfo.NotePopCards = ""
-			err = ChangeLandlordInfo(uid,landLordInfo)
+		landLord := FightLandlordRule(uid,popCards,landLordInfo,info)
+		if landLord!=nil {//没有结束
+			landLord.NotePopCards = ""
+			err = ChangeLandlordInfo(uid,landLord)
 			if err!=nil {
 				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
+				return nil,err
+			}
+		}else {//结束，记录本局比赛，显示结果
+			err=RecordDataByOverGame(uid,landLordInfo,info)
+			if err!=nil {
+				log.E(TAG_LANDLORD_DB+" RecordDataByOverGame err(%v)",err)
+				return nil,err
+			}
+			err=RestartLandlord(info)
+			if err!=nil {
+				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)",err)
 				return nil,err
 			}
 		}
@@ -371,7 +413,101 @@ func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,
 	return info_new,nil
 }
 
+/**
+统计战果
+ */
+func RecordDataByOverGame(uid string,landLordInfo,info *LandlordInfo) error {
+	record := &LandlordRecord{
+		Id:               bson.NewObjectId().Hex(),
+		Users:            []string{info.Players[0].StrVal("uid"),info.Players[1].StrVal("uid"),info.Players[2].StrVal("uid")},
+		LandlordUser:     info.LandlordUser,
+		Category:         info.Category,
+		Time:             util.Now(),
+		BombMultiple:     landLordInfo.Multiple.IntVal(LD_BOMBS),
+		DoubleMultiple:   int64(len(info.Multiple.StrVal(LD_DOUBLE_USERS))),
+		LandlordMultiple: info.Multiple.IntVal(LD_GRAB_SCORE),
+	}
 
+	//判断春天反春天
+	if uid == info.LandlordUser && IsMeetSpring(uid, info.Players) {
+		record.WinRole = LW_LANDLORD
+		record.SpringMultiple = 1
+	}
+	if uid != info.LandlordUser && IsMeetAntiSpring(info.LandlordUser, info.Players) {
+		record.WinRole = LW_FARMER
+		record.AntiSpringMultiple = 1
+	}
+	record.SumMultiple = record.LandlordMultiple
+	sum := int(record.DoubleMultiple + record.BombMultiple + record.SpringMultiple + record.AntiSpringMultiple)
+	for i := 0; i < sum; i++ {
+		record.SumMultiple *= 2
+	}
+	if info.Multiple.IntVal(LD_MING) > 0 {
+		record.SumMultiple *= info.Multiple.IntVal(LD_MING)
+	}
+	err := db.C(CN_LANDLORD_RECORD).Insert(&record)
+	if err != nil {
+		log.E("insert landlord record err(%v)", err)
+		return err
+	}
+	return nil
+}
+
+/**
+重新开局
+ */
+func RestartLandlord(info *LandlordInfo) error {
+	players_u:=info.Players
+	for i := 0; i < len(players_u); i++ {
+		players_u[i]["pop_times"] = 0
+		players_u[i]["cards"] = ""
+		players_u[i]["pop_cards"] = LC_PASS
+		players_u[i]["ming"] = ""
+		if players_u[i].IntVal("status") == LUS_COLLOCATION {
+			players_u[i]["status"] = LUS_ONLINE
+		}
+	}
+	//更新房间
+	err:=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id},bson.M{
+		"$set":bson.M{
+			"players":players_u,
+			"turn_user":"",
+			"operate_num" : 0,
+			"landlord_cards" : "",
+			"last_pop_cards" : LC_PASS,
+			"note_pop_cards" : LC_PASS,
+			"status" : LS_SHOW_RESULT,
+			"landlord_user" : "",
+			"multiple" :util.Map{},
+			"last" :util.Now(),
+			"queue_time" : 0,
+			"grab_time" : 0,
+			"double_time" : 0,
+			"pop_card_time" : 0,
+			"over_game_time" :util.Now(),
+			"ming_time" : 0,
+			"size" : 0,
+		}})
+	if err != nil {
+		log.E("update landlordInfo err(%v)", err)
+		return err
+	}
+	//离线移除
+	for i := 0; i < len(info.Players); i++ {
+		if info.Players[i].IntVal("status") == LUS_OFFLINE {
+			u:=info.Players[i].StrVal("uid")
+			err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id,"players.uid":u,"players.status":LUS_OFFLINE},bson.M{
+				"$pull":bson.M{
+					"players.uid":u,
+				}})
+			if err != nil {
+				log.E("update landlordInfo err(%v)", err)
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 /**
 修改斗地主信息
@@ -446,7 +582,7 @@ func ChangeLandlordInfo(uid string,landlordInfo *LandlordInfo) error {
 		for key, val := range landlordInfo.Multiple {
 			if key==LD_DOUBLE_USERS {
 				fargs["$addToSet"] = bson.M{"multiple."+LD_DOUBLE_USERS:landlordInfo.Multiple.StrVal(LD_DOUBLE_USERS)}
-			}else {
+			} else {
 				arg["multiple."+key] = val
 			}
 			//if key == LD_MING{//若为明牌则需要判断有没有明牌

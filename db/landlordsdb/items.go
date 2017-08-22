@@ -8,7 +8,7 @@ type LandlordInfo struct {
 	Id            string   `bson:"_id" json:"lid"`                                 //the landlords id
 	RoomId		int    `bson:"room_id" json:"room_id,omitempty"`
 	Players		[]util.Map `bson:"players" json:"players,omitempty"`                   //the landlords players list
-	//uid:用户id,status:Online,Offline,Collocation托管,cards：牌,popCards：出牌,ming：明牌方式,host：ip地址，popTimes出牌次数
+	//uid:用户id,status:Online,Offline,Collocation托管,cards：牌,popCards：出牌,ming：明牌方式,host：ip地址，popTimes出牌次数,grab_score抢地主分数
 	TurnUser      string   `bson:"turn_user" json:"turn_user,omitempty"`           //the landlords user turn
 	OperateNum      int      `bson:"operate_num" json:"operate_num,omitempty"` //当前回合的操作人数
 	LandlordCards string   `bson:"landlord_cards" json:"landlord_cards,omitempty"` //the landlord cards attribute list
@@ -32,7 +32,7 @@ type LandlordInfo struct {
 
 //当前用户的游戏状态
 const (
-	UGS_OFF       = -1 //不在游戏中
+	UGS_OFF       = 2 //不在游戏中
 	UGS_LANDLORDS = 1  //斗地主中
 )
 

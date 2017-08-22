@@ -5,6 +5,7 @@ import (
 	"github.com/Centny/gwf/util"
 	"github.com/Centny/gwf/log"
 	"yule/db/landlordsdb"
+	"strings"
 )
 
 //进入游戏
@@ -74,8 +75,17 @@ func EntryLandlords(hs *routing.HTTPSession) routing.HResult {
 	if LOG_API {
 		log.D(TAG_LANDLORDS+"uid(%v),gameType(%v)",uid,gameType)
 	}
-
-	return hs.MsgRes(util.Map{"result":"ok"})
+	result,landlord,set,err:=landlordsdb.IsEntryLandlord(uid)
+	if err != nil {
+		return hs.MsgResErr(2, "服务器错误", err)
+	}
+	if result == landlordsdb.UGS_OFF{
+		return hs.MsgRes(util.Map{"result":result,"landlordSet":set})
+	}
+	if result == landlordsdb.UGS_LANDLORDS{
+		return hs.MsgRes(util.Map{"result":result,"landlordInfo":landlord})
+	}
+	return hs.MsgResErr(2,"服务器错误", err)
 }
 
 func DoEntryLandlords(token string,gameType int) (util.Map, error) {
@@ -146,16 +156,19 @@ func StartNewLandlords(hs *routing.HTTPSession) routing.HResult  {
 		log.E("arg-err,%v", err)
 		return hs.MsgResErr(1, "arg-err", err)
 	}
+	var addr = strings.Split(hs.R.Header.Get("X-Real-IP"), ":")[0]
+	if len(addr) < 1 {
+		addr = strings.Split(hs.R.RemoteAddr, ":")[0]
+	}
 	uid:=hs.StrVal("uid")
 	if LOG_API {
-		log.D(TAG_LANDLORDS+"uid(%v),operate(%v),categoryId(%v)",uid,operate,categoryId)
+		log.D(TAG_LANDLORDS+"uid(%v),operate(%v),categoryId(%v),addr(%v)",uid,operate,categoryId,addr)
 	}
 	if operate<1 {
 		return hs.MsgResErr(1, "arg-err", err)
 	}
 	roomInfo:=&landlordsdb.LandlordInfo{}
 	switch operate {
-
 	case landlordsdb.START_HALL://从大厅选择分类进入
 		roomInfo,err=landlordsdb.GetRoomRandom(uid,categoryId)
 		break
@@ -236,7 +249,18 @@ func GetLandlords(hs *routing.HTTPSession) routing.HResult  {
 	if LOG_API {
 		log.D(TAG_LANDLORDS+"uid(%v),lid(%v)",uid,lid)
 	}
-	return hs.MsgRes(util.Map{"result":"ok"})
+	if len(lid)<0 {
+		return hs.MsgResErr(1, "参数错误", util.Err("lid(%v) error", lid))
+	}
+	landlordInfo,err:=landlordsdb.FindRoomV(uid,lid,"",0,0,nil)
+	if err != nil {
+		log.E("FindRoomV lids(%v)  err(%v)", lid, err)
+		return hs.MsgResErr(2, "服务器错误", err)
+	}
+	if LOG_API {
+		log.E("FindRoomV success info: %v",util.S2Json(landlordInfo))
+	}
+	return hs.MsgRes(util.Map{"landlordInfo":landlordInfo})
 }
 
 func DoGetLandlords(token,lid string) (util.Map, error) {
@@ -262,6 +286,9 @@ func DoGetLandlords(token,lid string) (util.Map, error) {
 //	lid		R	当前房间id
 //	operate		R	操作 1.OP_GRAB 2.OP_DOUBLE,3.OP_POP_CARD,4.OP_GET_NOTE,5.OP_PASS_CARD
 //	pop_cards	O	出牌
+//	ming_type	O	明牌方式
+//	double		O	加倍倍数
+//	grab		O	抢地主分数
 /*
 	样例	~/pub/api/OperateLandlords?token=xx&lid=xxx&operate=1&pop_cards=1,2
 */
@@ -275,26 +302,47 @@ func DoGetLandlords(token,lid string) (util.Map, error) {
 //@case,yule
 func OperateLandlords(hs *routing.HTTPSession) routing.HResult  {
 	var lid string
-	var operate int
+	var operate,ming_type,double,grab int
 	var pop_cards string
 	err:=hs.ValidF(`
 	lid,R|S,L:0;
 	operate,R|I,R:-1;
 	pop_cards,O|S,L:0;
-	`,&lid,&operate,&pop_cards)
+	ming_type,O|I,R:-1;
+	double,O|I,R:-1;
+	grab,O|I,R:-1;
+	`,&lid,&operate,&pop_cards,&ming_type,&double,&grab)
 	if err!=nil {
 		log.E("arg-err,%v", err)
 		return hs.MsgResErr(1, "arg-err", err)
 	}
 	uid:=hs.StrVal("uid")
 	if LOG_API {
-		log.D(TAG_LANDLORDS+"uid(%v),lid(%v),operate(%v),pop_cards(%v)",uid,lid,operate,pop_cards)
+		log.D(TAG_LANDLORDS+"uid(%v),lid(%v),operate(%v),pop_cards(%v),ming_type(%v),double(%v),grab(%v)",
+			uid,lid,operate,pop_cards,ming_type,double,grab)
 	}
-	return hs.MsgRes(util.Map{"result":"ok"})
+	l_u:=&landlordsdb.LandlordInfo{Id:lid}
+	if double>0 {
+		l_u.Multiple=util.Map{landlordsdb.LD_DOUBLE_USERS:uid}
+	}
+	if grab>0 {
+		l_u.Multiple=util.Map{landlordsdb.LD_GRAB_SCORE:grab}
+	}
+	landlordInfo,err:=landlordsdb.OperateLandlordInfo(uid,pop_cards,l_u,operate,ming_type)
+	if err != nil {
+		log.E("OperateLandlordInfo lids(%v),operate(%v),popCards(%v), mingType(%v),double(%v),grab(%v), err(%v)",
+			lid,operate,pop_cards,ming_type,double,grab, err)
+		return hs.MsgResErr(2, "服务器错误", err)
+	}
+	if LOG_API {
+		log.D("OperateLandlordInfo success info: %v",util.S2Json(landlordInfo))
+	}
+	return hs.MsgRes(util.Map{"landlordInfo":landlordInfo})
 }
 
-func DoOperateLandlords(token,lid string,operate int ,pop_cards string) (util.Map, error) {
-	res, err := util.HGet2("%v/usr/api/operateLandlords?token=%v&lid=%v&operate=%v&pop_cards=%v", SrvAddr(), token, lid,operate,pop_cards)
+func DoOperateLandlords(token,lid string,operate,ming_type,double,grab int ,pop_cards string) (util.Map, error) {
+	res, err := util.HGet2("%v/usr/api/operateLandlords?token=%v&lid=%v&operate=%v&pop_cards=%v&ming_type=%v&double=%v&grab=%v",
+		SrvAddr(), token, lid,operate,pop_cards,ming_type,double,grab)
 	if err != nil {
 		return nil, err
 	}

@@ -72,21 +72,21 @@ func TestOperateLandlordInfo(t *testing.T) {
 	}
 	log.D("Deal :%v", util.S2Json(info))
 	//抢地主
-	landlord.Multiple = util.Map{"grab_score": 1}
+	landlord.Multiple = util.Map{"grab_score": 0}
 	info, err = OperateLandlordInfo(info.TurnUser, "", landlord, OP_GRAB, 0)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	log.D("Grab :%v", util.S2Json(info))
-	landlord.Multiple = util.Map{"grab_score": 2}
+	landlord.Multiple = util.Map{"grab_score": 0}
 	info, err = OperateLandlordInfo(info.TurnUser, "", landlord, OP_GRAB, 0)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	log.D("Deal :%v", util.S2Json(info))
-	landlord.Multiple = util.Map{"grab_score": 3}
+	landlord.Multiple = util.Map{"grab_score": 2}
 	info, err = OperateLandlordInfo(info.TurnUser, "", landlord, OP_GRAB, 0)
 	if err != nil {
 		t.Error(err)
@@ -125,7 +125,7 @@ func TestOperateLandlordInfo(t *testing.T) {
 	landlord = &LandlordInfo{
 		Id: info.Id,
 	}
-	for {
+	for i:=0;i<10;i++{
 		turn := info.TurnUser
 
 		info, err = OperateLandlordInfo(turn, "", landlord, OP_GET_NOTE, 0)
