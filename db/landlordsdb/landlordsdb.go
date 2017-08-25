@@ -224,187 +224,205 @@ func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,
 	}
 	players:=[]util.Map{util.Map{"uid":info.Players[0].StrVal("uid")},util.Map{"uid":info.Players[1].StrVal("uid")},util.Map{"uid":info.Players[2].StrVal("uid")}}
 	switch operate {
-	case OP_MING://明牌
-		if (ming_type == LM_TD_BEFORE_DEAL&&util.Now()-info.MingTime>LT_MING)||info.Status<LS_MING||info.Status>LS_FIGHTING {
+	case OP_MING: //明牌
+		if (ming_type == LM_TD_BEFORE_DEAL && util.Now()-info.MingTime > LT_MING) || info.Status < LS_MING || info.Status > LS_FIGHTING {
 			log.E("ming err")
-			return nil,util.Err("ming err")
+			return nil, util.Err("ming err")
 		}
 		for i := 0; i < len(players); i++ {
 			if players[i].StrVal("uid") == uid {
 				players[i]["ming"] = LM_TD_BEFORE_DEAL
 			}
 		}
-		if ming_type == LM_TD_BEFORE_DEAL&&util.Now()-info.MingTime<=LT_MING {
+		if ming_type == LM_TD_BEFORE_DEAL && util.Now()-info.MingTime <= LT_MING {
 			multiple[LD_MING] = LM_TD_BEFORE_DEAL
-		}else {
+		} else {
 			multiple[LD_MING] = ming_type
 		}
 		landLordInfo.Multiple = multiple
 		landLordInfo.Players = players
-		err:=ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
+		err := ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
 		}
 		break
-	case OP_DEAL://发牌
-		if info.Status != LS_MING||util.Now()-info.MingTime<=LT_MING {
+	case OP_DEAL: //发牌
+		if info.Status != LS_MING || util.Now()-info.MingTime <= LT_MING {
 			log.E("deal err")
-			return nil,util.Err("deal err")
+			return nil, util.Err("deal err")
 		}
-		players,landlord_cards:=RandomDistributeCards(info.Players)//发牌
+		players, landlord_cards := RandomDistributeCards(info.Players) //发牌
 		landLordInfo.Players = players
-		turn_user:=info.Players[ConfirmFirstPlayer()].StrVal("uid")
+		turn_user := info.Players[ConfirmFirstPlayer()].StrVal("uid")
 		landLordInfo.LandlordCards = landlord_cards
 		landLordInfo.TurnUser = turn_user
 		landLordInfo.Status = LS_GRABBING
 		landLordInfo.GrabTime = util.Now()
-		err:=ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
+		err := ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
 		}
 		break
 	case OP_GRAB:
 		//进入抢地主 必须是在抢地主时间内，必须是轮到当前用户，状态为抢地主，每个用户最多只能轮流一次（即总共最多三次），抢地主分数必须比之前的分数要高
-		if util.Now() - info.GrabTime > LT_GRAB || uid != info.TurnUser || info.Status != LS_GRABBING||info.OperateNum>=PLAYER_NUM ||
-			(landLordInfo.Multiple.IntVal(LD_GRAB_SCORE)>0&&landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) <= info.Multiple.IntVal(LD_GRAB_SCORE)){
-			log.E("grab err",)
-			return nil,util.Err("grab err")
+		if util.Now()-info.GrabTime > LT_GRAB || uid != info.TurnUser || info.Status != LS_GRABBING || info.OperateNum >= PLAYER_NUM ||
+			(landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) > 0 && landLordInfo.Multiple.IntVal(LD_GRAB_SCORE) <= info.Multiple.IntVal(LD_GRAB_SCORE)) {
+			log.E("grab err", )
+			return nil, util.Err("grab err")
 		}
 		//抢地主规则
-		landLordInfo = GrabLandlordRule(uid,landLordInfo,info)
+		landLordInfo = GrabLandlordRule(uid, landLordInfo, info)
 		//判断是否都不抢地主而重新开局
-		if landLordInfo!=nil {
-			err = ChangeLandlordInfo(uid,landLordInfo)
-			if err!=nil {
-				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-				return nil,err
+		if landLordInfo != nil {
+			err = ChangeLandlordInfo(uid, landLordInfo)
+			if err != nil {
+				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+				return nil, err
 			}
-		}else {//重新开局
-			err=RestartLandlord(info)
-			if err!=nil {
-				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)",err)
-				return nil,err
+		} else { //重新开局
+			err = RestartLandlord(info)
+			if err != nil {
+				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)", err)
+				return nil, err
 			}
 		}
 
 		break
 	case OP_DOUBLE:
 		//加倍 必须是在加倍时间内，必须是轮到当前用户，状态为抢地主，每个用户最多只能轮流一次（即总共最多三次），抢地主分数必须比之前的分数要高
-		if util.Now() - info.DoubleTime > LT_DOUBLE || uid != info.TurnUser || info.Status != LS_DOUBLING||info.OperateNum>=PLAYER_NUM {
+		if util.Now()-info.DoubleTime > LT_DOUBLE || uid != info.TurnUser || info.Status != LS_DOUBLING || info.OperateNum >= PLAYER_NUM {
 			log.E("double err")
-			return nil,util.Err("double err")
+			return nil, util.Err("double err")
 		}
 		//加倍规则
-		landLordInfo = DoubleLandlordRule(uid,landLordInfo,info)
-		err = ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
+		landLordInfo = DoubleLandlordRule(uid, landLordInfo, info)
+		err = ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
 		}
 		break
 	case OP_POP_CARD:
 		//出牌
-		if util.Now()-info.PopCardTime>LT_POP_CARD||uid!=info.TurnUser||info.Status!=LS_FIGHTING{
+		if util.Now()-info.PopCardTime > LT_POP_CARD || uid != info.TurnUser || info.Status != LS_FIGHTING {
 			log.E("pop card err")
-			return nil,util.Err("pop card err")
+			return nil, util.Err("pop card err")
 		}
 		//根据上家出牌以及中途出现的不出牌开启新回合
-		lastPopCards:=info.LastPopCards
+		lastPopCards := info.LastPopCards
 		for i := 0; i < PLAYER_NUM; i++ {
-			if info.Players[i].StrVal("uid")==uid {
-				if info.Players[(i+1)%3].StrVal("pop_cards") == LC_PASS&&
-					info.Players[(i+2)%3].StrVal("pop_cards") == LC_PASS{//假如另外两家都不出牌，则轮到自己为首发出牌
+			if info.Players[i].StrVal("uid") == uid {
+				if info.Players[(i+1)%3].StrVal("pop_cards") == LC_PASS &&
+					info.Players[(i+2)%3].StrVal("pop_cards") == LC_PASS { //假如另外两家都不出牌，则轮到自己为首发出牌
 					lastPopCards = ""
 				}
 			}
 		}
-		if info.LastPopCards==LC_PASS {
+		if info.LastPopCards == LC_PASS {
 			lastPopCards = ""
 		}
 		//不符合出牌规则
-		if !IsMeetPopLogic(popCards,lastPopCards){
+		if !IsMeetPopLogic(popCards, lastPopCards) {
 			log.E("pop card err")
-			return nil,util.Err("pop card err")
+			return nil, util.Err("pop card err")
 		}
-		landLord := FightLandlordRule(uid,popCards,landLordInfo,info)
-		if landLord!=nil {//没有结束
+		landLord := FightLandlordRule(uid, popCards, landLordInfo, info)
+		if landLord != nil { //没有结束
 			landLord.NotePopCards = ""
-			err = ChangeLandlordInfo(uid,landLord)
-			if err!=nil {
-				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-				return nil,err
+			err = ChangeLandlordInfo(uid, landLord)
+			if err != nil {
+				log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+				return nil, err
 			}
-		}else {//结束，记录本局比赛，显示结果
-			err=RecordDataByOverGame(uid,landLordInfo,info)
-			if err!=nil {
-				log.E(TAG_LANDLORD_DB+" RecordDataByOverGame err(%v)",err)
-				return nil,err
+		} else { //结束，记录本局比赛，显示结果
+			err = RecordDataByOverGame(uid, landLordInfo, info)
+			if err != nil {
+				log.E(TAG_LANDLORD_DB+" RecordDataByOverGame err(%v)", err)
+				return nil, err
 			}
-			err=RestartLandlord(info)
-			if err!=nil {
-				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)",err)
-				return nil,err
+			err = RestartLandlord(info)
+			if err != nil {
+				log.E(TAG_LANDLORD_DB+" RestartLandlord err(%v)", err)
+				return nil, err
 			}
 		}
 
 	case OP_PASS_CARD:
-		if util.Now()-info.PopCardTime>LT_POP_CARD||uid!=info.TurnUser||info.Status!=LS_FIGHTING{
+		if util.Now()-info.PopCardTime > LT_POP_CARD || uid != info.TurnUser || info.Status != LS_FIGHTING {
 			log.E("pop card err")
-			return nil,util.Err("pass card err")
+			return nil, util.Err("pass card err")
 		}
-		landLordInfo = PassCardRule(uid,landLordInfo,info)
+		landLordInfo = PassCardRule(uid, landLordInfo, info)
 		landLordInfo.NotePopCards = ""
-		err = ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
+		err = ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
 		}
 		break
 	case OP_GET_NOTE:
-		if util.Now()-info.PopCardTime>LT_POP_CARD||uid!=info.TurnUser||info.Status!=LS_FIGHTING{
+		if util.Now()-info.PopCardTime > LT_POP_CARD || uid != info.TurnUser || info.Status != LS_FIGHTING {
 			log.E("get note card err")
-			return nil,util.Err("get note card err")
+			return nil, util.Err("get note card err")
 		}
-		noteCards:=GetNoteCardsRule(uid,info)
-		if len(noteCards)<1 {
+		noteCards := GetNoteCardsRule(uid, info)
+		if len(noteCards) < 1 {
 			noteCards = LC_PASS
 		}
-		landLordInfo.NotePopCards =noteCards
+		landLordInfo.NotePopCards = noteCards
+		err = ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
+		}
+		break
+	case OP_CONTINUE:
+		if util.Now()-info.OverGameTime > LT_GAME_OVER_SHOW || info.Status != LS_SHOW_RESULT {
+			log.E("continue err")
+			return nil, util.Err("continue card err")
+		}
+		//初始化
+		landLordInfo = InitRoomContinue(uid, info)
+		err = ChangeLandlordInfo(uid, landLordInfo)
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
+		}
+		break
+	case OP_RETURN_HALL:
+		if info.Status != LS_SHOW_RESULT {
+			log.E("return hall err")
+			return nil, util.Err("return hall err")
+		}
+		err = db.C(CN_LANDLORD_INFO).Update(bson.M{"_id": info.Id, "players.uid": uid, "players.status": LUS_ONLINE}, bson.M{
+			"$pull": bson.M{
+				"players.uid": uid,
+			}})
+		if err != nil {
+			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)", err)
+			return nil, err
+		}
+		break
+	case OP_COLLOCATION: //托管
+		if info.Status != LS_FIGHTING {
+			log.E("collocation err")
+			return nil, util.Err("collocation err")
+		}
+		for i := 0; i < PLAYER_NUM; i++ {
+			if info.Players[i].StrVal("uid") == uid {
+				landLordInfo.Players = []util.Map{util.Map{"uid": uid, "status": LUS_COLLOCATION}}
+			}
+		}
 		err = ChangeLandlordInfo(uid,landLordInfo)
 		if err!=nil {
 			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
 			return nil,err
 		}
 		break
-	case OP_CONTINUE:
-		if util.Now()-info.OverGameTime>LT_GAME_OVER_SHOW||info.Status!=LS_SHOW_RESULT {
-			log.E("continue err")
-			return nil,util.Err("continue card err")
-		}
-		//初始化
-		landLordInfo = InitRoomContinue(uid , info)
-		err = ChangeLandlordInfo(uid,landLordInfo)
-		if err!=nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
-		}
-	case OP_RETURN_HALL:
-		if info.Status!=LS_SHOW_RESULT {
-			log.E("return hall err")
-			return nil,util.Err("return hall err")
-		}
-		err=db.C(CN_LANDLORD_INFO).Update(bson.M{"_id":info.Id,"players.uid":uid,"players.status":LUS_ONLINE},bson.M{
-			"$pull":bson.M{
-				"players.uid":uid,
-			}})
-		if err != nil {
-			log.E(TAG_LANDLORD_DB+" ChangeLandlordInfo err(%v)",err)
-			return nil,err
-		}
-
 	}
+
 	info_new,err:=FindRoomV(uid,info.Id,"",0,0,nil)
 	if err!=nil {
 		log.E(TAG_LANDLORD_DB+" Find the landlordInfo err(%v)",err)
@@ -412,6 +430,10 @@ func OperateLandlordInfo(uid,popCards string,landLordInfo *LandlordInfo,operate,
 	}
 	return info_new,nil
 }
+
+/**
+断线玩家
+ */
 
 /**
 统计战果
@@ -424,8 +446,16 @@ func RecordDataByOverGame(uid string,landLordInfo,info *LandlordInfo) error {
 		Category:         info.Category,
 		Time:             util.Now(),
 		BombMultiple:     landLordInfo.Multiple.IntVal(LD_BOMBS),
-		DoubleMultiple:   int64(len(info.Multiple.StrVal(LD_DOUBLE_USERS))),
+		DoubleMultiple:   int64(len(info.Multiple.AryStrVal(LD_DOUBLE_USERS))),
 		LandlordMultiple: info.Multiple.IntVal(LD_GRAB_SCORE),
+		MingMultiple:info.Multiple.IntVal(LD_MING),
+	}
+
+	//如果赢家为地主
+	if uid == info.LandlordUser{
+		record.WinRole = LW_LANDLORD
+	}else{
+		record.WinRole = LW_FARMER
 	}
 
 	//判断春天反春天
@@ -437,14 +467,18 @@ func RecordDataByOverGame(uid string,landLordInfo,info *LandlordInfo) error {
 		record.WinRole = LW_FARMER
 		record.AntiSpringMultiple = 1
 	}
-	record.SumMultiple = record.LandlordMultiple
-	sum := int(record.DoubleMultiple + record.BombMultiple + record.SpringMultiple + record.AntiSpringMultiple)
+	record.SumMultiple = 1
+	if info.Multiple.IntVal(LD_GRAB_SCORE)>0 {
+		record.SumMultiple *=info.Multiple.IntVal(LD_GRAB_SCORE)
+	}
+	sum := int( record.BombMultiple + record.SpringMultiple + record.AntiSpringMultiple+record.DoubleMultiple)
 	for i := 0; i < sum; i++ {
 		record.SumMultiple *= 2
 	}
 	if info.Multiple.IntVal(LD_MING) > 0 {
 		record.SumMultiple *= info.Multiple.IntVal(LD_MING)
 	}
+
 	err := db.C(CN_LANDLORD_RECORD).Insert(&record)
 	if err != nil {
 		log.E("insert landlord record err(%v)", err)

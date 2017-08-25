@@ -89,7 +89,7 @@ func EntryLandlords(hs *routing.HTTPSession) routing.HResult {
 }
 
 func DoEntryLandlords(token string,gameType int) (util.Map, error) {
-	res, err := util.HGet2("%v/usr/api/entryLandlords?token=%v&gameType=%v", SrvAddr(), token, gameType)
+		res, err := util.HGet2("%v/usr/api/entryLandlords?token=%v&gameType=%v", SrvAddr(), token, gameType)
 	if err != nil {
 		return nil, err
 	}

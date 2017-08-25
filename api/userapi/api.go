@@ -2,6 +2,7 @@ package userapi
 
 import (
 	"github.com/Centny/gwf/routing"
+	"net"
 )
 
 var SrvAddr = func() string {
@@ -14,6 +15,9 @@ const (
 	TAG_LANDLORDS = "landlords--"
 	TAG_LANDLORDS_TEST = "landlords_test--"
 )
+
+var ConnMap map[string]*net.TCPConn
+
 
 func Hand(pre string, mux *routing.SessionMux) {
 	mux.HFilterFunc("^"+pre+"/usr/.*$", LoginFilter)

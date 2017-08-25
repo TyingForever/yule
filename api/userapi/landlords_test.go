@@ -178,7 +178,7 @@ func TestDoEntryLandlords(t *testing.T) {
 		}
 	}
 	res,err=DoOperateLandlords(turn_user_token,res.MapVal("landlordInfo").StrVal("lid"),
-		landlordsdb.OP_DOUBLE,0,0,0,"")
+		landlordsdb.OP_DOUBLE,0,1,0,"")
 	if err != nil {
 		log.E(TAG_LANDLORDS_TEST+"err(%v)",err)
 		t.Error(err)
@@ -243,25 +243,4 @@ func TestDoEntryLandlords(t *testing.T) {
 		}
 	}
 
-	//lid:="123456"
-	//res,err=DoGetLandlords(token[0],lid)
-	//if err!=nil {
-	//	log.E(TAG_LANDLORDS_TEST+"err(%v)",err)
-	//	t.Error(err)
-	//	return
-	//}
-	//if LOG_API_TEST {
-	//	log.D(TAG_LANDLORDS_TEST+"DoGetLandlords: %v",util.S2Json(res))
-	//}
-	//
-	//pop_cards:="1,2,3,4,5"
-	//res,err=DoOperateLandlords(token[0],lid,operate,0,0,0,pop_cards)
-	//if err != nil {
-	//	log.E(TAG_LANDLORDS_TEST+"err(%v)",err)
-	//	t.Error(err)
-	//	return
-	//}
-	//if LOG_API_TEST {
-	//	log.D(TAG_LANDLORDS_TEST+"DoOperateLandlords: %v",util.S2Json(res))
-	//}
 }

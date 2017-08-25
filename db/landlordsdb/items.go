@@ -106,9 +106,9 @@ const (
 	OP_DEAL = 7	//发牌
 	OP_CONTINUE = 8//继续
 	OP_RETURN_HALL  = 9//返回大厅
+	OP_COLLOCATION = 10 //托管
 
-	//进入操作
-	OP_ENTRY_MING = 8
+
 	//不出牌
 	LC_PASS = "PASS"
 
@@ -126,6 +126,7 @@ type LandlordRecord struct {
 	BombMultiple       int64      `bson:"bomb_multiple" json:"bomb_multiple,omitempty"`               //炸弹倍数
 	SpringMultiple     int64      `bson:"spring_multiple" json:"spring_multiple,omitempty"`           //春天倍数
 	AntiSpringMultiple int64      `bson:"anti_spring_multiple" json:"anti_spring_multiple,omitempty"` //反春天倍数
+	MingMultiple int64      `bson:"ming_multiple" json:"ming_multiple,omitempty"` //明牌倍数
 	SumMultiple        int64      `bson:"sum_multiple" json:"sum_multiple,omitempty"`                 //总倍数
 	Time               int64    `bson:"time" json:"time,omitempty"`                                 //the create time
 }
